@@ -1,0 +1,7 @@
+drone_id,start_x,start_y,start_z,instructions
+1,0,0,0,RIGHT;UP;RIGHT
+2,1,0,0,RIGHT;UP;LEFT
+3,2,0,0,LEFT;UP;RIGHT
+4,0,1,0,RIGHT;DOWN;RIGHT
+5,1,1,0,SHAKE;UP;SHAKE
+6,2,1,0,LEFT;DOWN;LEFT

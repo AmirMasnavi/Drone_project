@@ -1,0 +1,3 @@
+drone_id,start_x,start_y,start_z,instructions
+1,0,0,0,UP;RIGHT;FORWARD
+2,5,5,0,LEFT;DOWN;BACKWARD
