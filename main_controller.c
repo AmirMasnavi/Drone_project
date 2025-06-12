@@ -59,16 +59,18 @@ void* simulation_loop_thread(void* arg) {
         log_time_step_header_to_report(current_time_step);
         printf("\n--- Time Step %d ---\n", current_time_step);
 
+        // --- US364: Signal all active drones to advance (step-by-step sync) ---
         for (int i = 0; i < num_sim_drones; ++i) {
             if (shared_mem->drones[i].active) {
-                sem_post(sim_drones[i].sem_child_can_act);
+                sem_post(sim_drones[i].sem_child_can_act); // Tell drone it's okay to move
             }
         }
 
+        // --- US364: Wait for all active drones to finish their step ---
         int drones_finished_this_step = 0;
         for (int i = 0; i < num_sim_drones; ++i) {
             if (shared_mem->drones[i].active) {
-                sem_wait(sim_drones[i].sem_parent_can_read);
+                sem_wait(sim_drones[i].sem_parent_can_read); // Wait for drone to confirm it moved
                 if (shared_mem->drones[i].finished) {
                     shared_mem->drones[i].active = 0;
                     drones_finished_this_step++;

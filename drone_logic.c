@@ -39,6 +39,7 @@ void drone_child_process(int drone_index, Drone initial_drone_config) {
     int my_z = initial_drone_config.initial_z;
 
     while (local_shared_mem->simulation_running) {
+        // --- US364: Wait for parent to signal "go" for this time step ---
         sem_wait(sem_child); // Wait for parent to signal "go"
 
         if (local_shared_mem->drones[drone_index].terminate_flag) {
@@ -81,6 +82,7 @@ void drone_child_process(int drone_index, Drone initial_drone_config) {
              local_shared_mem->drones[drone_index].finished = 1;
         }
 
+        // --- US364: Signal parent that this step is complete ---
         sem_post(sem_parent); // Signal parent: "I'm done with this step"
 
         if (local_shared_mem->drones[drone_index].finished) {
