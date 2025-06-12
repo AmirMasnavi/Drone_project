@@ -16,7 +16,8 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <semaphore.h>
-#include <pthread.h> // For future use
+// ADDED: Include for POSIX threads
+#include <pthread.h>
 
 // --- Constants ---
 #define MAX_DRONES 10
@@ -45,23 +46,23 @@ typedef enum {
 
 // Structure representing a single drone's state in SHARED MEMORY
 typedef struct {
-    pid_t pid;                      // PID of the drone process
-    int id;                         // Drone's unique ID
-    int x, y, z;                    // Current 3D coordinates
-    int finished;                   // Flag: 1 if drone completed all instructions
-    int active;                     // Flag: 1 if currently running, 0 if done/terminated
-    int instruction_executed_index; // Index of the instruction just performed
-    int terminate_flag;             // Parent sets this to 1 to gracefully terminate drone
+    pid_t pid;
+    int id;
+    int x, y, z;
+    int finished;
+    int active;
+    int instruction_executed_index;
+    int terminate_flag;
 } DroneSharedState;
 
 // Layout of the entire shared memory segment
 typedef struct {
-    int total_collisions_count;     // Global collision counter
-    int simulation_running;         // Flag to control simulation lifetime
-    DroneSharedState drones[MAX_DRONES]; // Array of all drone states
+    int total_collisions_count;
+    int simulation_running;
+    DroneSharedState drones[MAX_DRONES];
 } SharedMemoryLayout;
 
-// Structure for logging collision details for the report (remains the same)
+// Structure for logging collision details for the report
 typedef struct {
     int time_step;
     time_t timestamp;
@@ -69,27 +70,27 @@ typedef struct {
     int x, y, z;
 } CollisionEvent;
 
-// Structure representing a single drone's configuration (managed locally by parent)
+// Structure representing a single drone's configuration
 typedef struct {
     int id;
     int initial_x, initial_y, initial_z;
     CommandType instructions[MAX_INSTRUCTIONS];
     int num_instructions;
-    int current_instruction_index_tracker;
     pid_t pid;
-    sem_t *sem_parent_can_read; // Semaphore for parent to wait on (drone finished step)
-    sem_t *sem_child_can_act;   // Semaphore for child to wait on (parent allows step)
+    sem_t *sem_parent_can_read;
+    sem_t *sem_child_can_act;
 } Drone;
+
 
 // --- Global Variables ---
 extern Drone sim_drones[MAX_DRONES];
 extern int num_sim_drones;
 extern FILE *report_file;
-extern int total_collisions_count; // Now mainly for reporting, SHM is the source of truth
+extern int total_collisions_count;
 extern CollisionEvent collision_log[MAX_DRONES * MAX_TIME_STEPS];
 extern int collision_log_index;
 extern int drone_positions_history[MAX_TIME_STEPS][MAX_DRONES][3];
-extern SharedMemoryLayout *shared_mem; // Pointer to the mapped shared memory
+extern SharedMemoryLayout *shared_mem;
 
 // --- Function Prototypes ---
 

@@ -52,13 +52,9 @@ int load_drones_from_csv(const char* filename, Drone drones_arr[], int* drone_co
 
     while (fgets(line, sizeof(line), file) && *drone_count_ptr < MAX_DRONES) {
         Drone* d = &drones_arr[*drone_count_ptr];
-        // Initialize fields that are part of the Drone config struct.
-        // Other fields like PIDs and Semaphores will be set in main_controller.
-        d->current_instruction_index_tracker = 0;
         d->num_instructions = 0;
-        // NOTE: The 'active' and pipe-related fields have been removed from the Drone struct.
-        // The parser no longer needs to initialize them.
-
+        // REMOVED: The line initializing 'current_instruction_index_tracker' as it's no longer in the Drone struct.
+        
         char* token;
 
         // Drone ID
@@ -66,7 +62,6 @@ int load_drones_from_csv(const char* filename, Drone drones_arr[], int* drone_co
         if (token) d->id = atoi(token); else { fclose(file); return 0; }
 
         // Start X, Y, Z coordinates are now 'initial' positions.
-        // The live coordinates are stored in the shared memory.
         token = strtok(NULL, ",");
         if (token) d->initial_x = atoi(token); else { fclose(file); return 0; }
 
@@ -77,21 +72,21 @@ int load_drones_from_csv(const char* filename, Drone drones_arr[], int* drone_co
         if (token) d->initial_z = atoi(token); else { fclose(file); return 0; }
 
         // Instructions (semicolon-separated)
-        token = strtok(NULL, "\n"); // Read the rest of the line for instructions
+        token = strtok(NULL, "\n"); 
         if (token) {
             char* instr_token = strtok(token, ";");
             while (instr_token && d->num_instructions < MAX_INSTRUCTIONS) {
-                // Trim leading/trailing whitespace from instruction token
+                // Trim leading/trailing whitespace
                 while (*instr_token == ' ' || *instr_token == '\t') instr_token++;
                 char *end = instr_token + strlen(instr_token) - 1;
                 while (end > instr_token && (*end == ' ' || *end == '\t')) end--;
-                *(end + 1) = '\0'; // Null-terminate the trimmed string
+                *(end + 1) = '\0';
 
                 CommandType cmd = string_to_command(instr_token);
                 if (cmd == CMD_UNKNOWN) {
                     fprintf(stderr, "CSV_PARSER: Invalid instruction '%s' for Drone ID %d.\n", instr_token, d->id);
                     fclose(file);
-                    return 0; // Critical error if an instruction is unknown
+                    return 0;
                 }
                 d->instructions[d->num_instructions++] = cmd;
                 instr_token = strtok(NULL, ";");
