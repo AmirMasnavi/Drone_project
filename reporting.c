@@ -7,6 +7,8 @@ FILE *report_file = NULL;
 // Global definitions for collision logging (declared extern in .h)
 CollisionEvent collision_log[MAX_DRONES * MAX_TIME_STEPS];
 int collision_log_index = 0;
+SharedMemoryLayout *shared_mem; // This is needed to access drone states
+
 
 
 // Initializes the report file. Returns 1 on success, 0 on failure.
@@ -39,8 +41,9 @@ void log_initial_drone_states_to_report(void) {
     if (!report_file) return;
     fprintf(report_file, "Initial Drone States (Loaded %d drones):\n", num_sim_drones);
     for (int i = 0; i < num_sim_drones; ++i) {
+        // Here we use the config struct, as shared_mem is also initialized from this
         fprintf(report_file, "  Drone ID %d: Start Pos (%d, %d, %d), Instructions: %d\n",
-                sim_drones[i].id, sim_drones[i].x, sim_drones[i].y, sim_drones[i].z,
+                sim_drones[i].id, sim_drones[i].initial_x, sim_drones[i].initial_y, sim_drones[i].initial_z,
                 sim_drones[i].num_instructions);
     }
     fprintf(report_file, "---------------------------------------\n\n");
@@ -55,21 +58,22 @@ void log_time_step_header_to_report(int time_step) {
 }
 
 // Logs an update from a drone (movement or status change).
-void log_drone_update_to_report(const Drone* drone_state_in_parent, const DroneUpdate* update, CommandType cmd_type) {
+void log_drone_update_to_report(const DroneSharedState* update, CommandType cmd_type) {
     if (!report_file) return;
     fprintf(report_file, "  Drone ID %d: Pos (%d, %d, %d), Executed Instr %d (%s)\n",
-            update->drone_id, update->new_x, update->new_y, update->new_z,
+            update->id, update->x, update->y, update->z,
             update->instruction_executed_index, command_to_string(cmd_type));
     fflush(report_file);
 }
 
 // Logs that a drone has finished its instructions.
-void log_drone_finish_to_report(const Drone* drone_state_in_parent) {
+void log_drone_finish_to_report(const DroneSharedState* update) {
     if (!report_file) return;
     fprintf(report_file, "  Drone ID %d: Pos (%d, %d, %d) - FINISHED flight plan.\n",
-            drone_state_in_parent->id, drone_state_in_parent->x, drone_state_in_parent->y, drone_state_in_parent->z);
+            update->id, update->x, update->y, update->z);
     fflush(report_file);
 }
+
 
 // Logs an error message to the report.
 void log_error_to_report(const char* error_message) {
@@ -109,7 +113,7 @@ void log_simulation_summary_to_report(int final_time_step, int simulation_status
     if (!report_file) return;
     fprintf(report_file, "\n==== Simulation Summary ====\n");
     fprintf(report_file, "Total Drones Simulated: %d\n", num_sim_drones);
-    fprintf(report_file, "Total Time Steps Executed: %d\n", final_time_step -1); // time_step increments one last time
+    fprintf(report_file, "Total Time Steps Executed: %d\n", final_time_step > 0 ? final_time_step - 1 : 0);
     fprintf(report_file, "Total Collisions Detected: %d\n", total_collisions_count);
 
     fprintf(report_file, "\nCollision Event Log (%d entries):\n", collision_log_index);
@@ -138,6 +142,8 @@ void log_simulation_summary_to_report(int final_time_step, int simulation_status
     fprintf(report_file, "==========================\n");
     fflush(report_file);
 }
+
+
 
 // Closes the report file.
 void close_report(void) {

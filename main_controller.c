@@ -2,46 +2,53 @@
 #include "drone_simulation.h"
 #include "ui_display.h"
 
-// Define global variables (declared extern in drone_simulation.h)
+// Define global variables
 Drone sim_drones[MAX_DRONES];
 int num_sim_drones = 0;
-int total_collisions_count = 0;
-// History of drone positions [time_step_idx][drone_array_idx][x=0,y=1,z=2]
-// time_step_idx 0 is initial, time_step_idx 1 is after first move, etc.
+int total_collisions_count = 0; // Mirrored from shared_mem for convenience
 int drone_positions_history[MAX_TIME_STEPS][MAX_DRONES][3];
+SharedMemoryLayout *shared_mem = NULL;
 
+void cleanup_simulation_resources() {
+    // Unlink semaphores
+    char sem_name[BUFFER_SIZE];
+    for (int i = 0; i < num_sim_drones; ++i) {
+        if (sim_drones[i].sem_parent_can_read) sem_close(sim_drones[i].sem_parent_can_read);
+        if (sim_drones[i].sem_child_can_act) sem_close(sim_drones[i].sem_child_can_act);
 
-void cleanup_pipes(int drone_index) {
-    if (sim_drones[drone_index].pipe_to_child_write_fd != -1) {
-        close(sim_drones[drone_index].pipe_to_child_write_fd);
-        sim_drones[drone_index].pipe_to_child_write_fd = -1;
+        snprintf(sem_name, BUFFER_SIZE, "%s%d", SEM_PARENT_PREFIX, i);
+        sem_unlink(sem_name);
+        snprintf(sem_name, BUFFER_SIZE, "%s%d", SEM_CHILD_PREFIX, i);
+        sem_unlink(sem_name);
     }
-    if (sim_drones[drone_index].pipe_from_child_read_fd != -1) {
-        close(sim_drones[drone_index].pipe_from_child_read_fd);
-        sim_drones[drone_index].pipe_from_child_read_fd = -1;
+
+    // Unmap and unlink shared memory
+    if (shared_mem) {
+        munmap(shared_mem, sizeof(SharedMemoryLayout));
     }
+    shm_unlink(SHM_NAME);
+    printf("MAIN_CONTROLLER: All simulation resources cleaned up.\n");
 }
 
-int main(int argc, char *argv[]) {
-    const char* csv_filename = "drones_flight_plan.csv";
 
-    if (argc > 1) {
-        csv_filename = argv[1]; // Use filename from command line if provided
-    }
+int main(int argc, char *argv[]) {
+    atexit(cleanup_simulation_resources); // Ensure cleanup on normal exit
+
+    const char* csv_filename = "drones_flight_plan.csv";
+    if (argc > 1) csv_filename = argv[1];
     printf("MAIN_CONTROLLER: Using drone data file: %s\n", csv_filename);
 
     init_display();
     if (!init_report(REPORT_FILENAME)) {
-        fprintf(stderr, "MAIN_CONTROLLER: CRITICAL - Failed to initialize report file. Exiting.\n");
+        fprintf(stderr, "MAIN_CONTROLLER: CRITICAL - Failed to initialize report file.\n");
         return EXIT_FAILURE;
     }
-
     log_to_report("MAIN_CONTROLLER: Simulation process started using %s.\n", csv_filename);
 
     if (!load_drones_from_csv(csv_filename, sim_drones, &num_sim_drones)) {
         fprintf(stderr, "MAIN_CONTROLLER: Failed to load drones from CSV.\n");
-        log_error_to_report("Failed to load drone data from drones_flight_plan.csv.");
-        log_simulation_summary_to_report(0, 3); // Status 3: Failed (Incomplete)
+        log_error_to_report("Failed to load drone data from CSV.");
+        log_simulation_summary_to_report(0, 3);
         close_report();
         return EXIT_FAILURE;
     }
@@ -49,269 +56,181 @@ int main(int argc, char *argv[]) {
     if (num_sim_drones == 0) {
         printf("MAIN_CONTROLLER: No drones to simulate.\n");
         log_to_report("No drones found in CSV. Simulation ended.\n");
-        log_simulation_summary_to_report(0, 0); // Status 0: Passed ( vacuously true)
+        log_simulation_summary_to_report(0, 0);
         close_report();
         return EXIT_SUCCESS;
     }
+    printf("MAIN_CONTROLLER: Loaded %d drones.\n", num_sim_drones);
 
+    // --- Setup Shared Memory ---
+    int shm_fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("MAIN_CONTROLLER: shm_open failed");
+        return EXIT_FAILURE;
+    }
+    ftruncate(shm_fd, sizeof(SharedMemoryLayout));
+    shared_mem = mmap(0, sizeof(SharedMemoryLayout), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shared_mem == MAP_FAILED) {
+        perror("MAIN_CONTROLLER: mmap failed");
+        return EXIT_FAILURE;
+    }
+    close(shm_fd); // File descriptor no longer needed after mmap
+
+    // --- Setup Semaphores and Initialize Shared Memory State ---
+    char sem_name[BUFFER_SIZE];
+    for (int i = 0; i < num_sim_drones; ++i) {
+        // Parent semaphore (parent waits)
+        snprintf(sem_name, BUFFER_SIZE, "%s%d", SEM_PARENT_PREFIX, i);
+        sem_unlink(sem_name); // Clean up previous runs
+        sim_drones[i].sem_parent_can_read = sem_open(sem_name, O_CREAT, 0666, 0); // Initial value 0
+
+        // Child semaphore (child waits)
+        snprintf(sem_name, BUFFER_SIZE, "%s%d", SEM_CHILD_PREFIX, i);
+        sem_unlink(sem_name); // Clean up previous runs
+        sim_drones[i].sem_child_can_act = sem_open(sem_name, O_CREAT, 0666, 0); // Initial value 0
+
+        if (sim_drones[i].sem_parent_can_read == SEM_FAILED || sim_drones[i].sem_child_can_act == SEM_FAILED) {
+            perror("MAIN_CONTROLLER: sem_open failed");
+            return EXIT_FAILURE;
+        }
+
+        // Initialize shared state for this drone
+        shared_mem->drones[i].id = sim_drones[i].id;
+        shared_mem->drones[i].x = sim_drones[i].initial_x;
+        shared_mem->drones[i].y = sim_drones[i].initial_y;
+        shared_mem->drones[i].z = sim_drones[i].initial_z;
+        shared_mem->drones[i].active = 1;
+        shared_mem->drones[i].finished = 0;
+        shared_mem->drones[i].terminate_flag = 0;
+        drone_positions_history[0][i][0] = sim_drones[i].initial_x;
+        drone_positions_history[0][i][1] = sim_drones[i].initial_y;
+        drone_positions_history[0][i][2] = sim_drones[i].initial_z;
+    }
+    shared_mem->total_collisions_count = 0;
+    shared_mem->simulation_running = 1;
+    
     log_initial_drone_states_to_report();
-    printf("MAIN_CONTROLLER: Loaded %d drones. Initial positions logged to report.\n", num_sim_drones);
     printf("Starting simulation...\n");
 
-    // Store initial positions (time_step 0)
-    for (int i = 0; i < num_sim_drones; ++i) {
-        if (0 < MAX_TIME_STEPS && i < MAX_DRONES) { // Bounds check
-            drone_positions_history[0][i][0] = sim_drones[i].x;
-            drone_positions_history[0][i][1] = sim_drones[i].y;
-            drone_positions_history[0][i][2] = sim_drones[i].z;
-        }
-    }
-
-
     // --- Fork Drone Processes ---
-    // Temporary pipe arrays for setup
-    int temp_pipes_to_child[MAX_DRONES][2];
-    int temp_pipes_from_child[MAX_DRONES][2];
-
     for (int i = 0; i < num_sim_drones; ++i) {
-        if (pipe(temp_pipes_to_child[i]) == -1 || pipe(temp_pipes_from_child[i]) == -1) {
-            perror("MAIN_CONTROLLER: Error creating pipes");
-            log_error_to_report("Critical error creating pipes for inter-process communication.");
-            // Proper cleanup for already opened pipes and forked processes would be needed here
-            log_simulation_summary_to_report(0, 3);
-            close_report();
-            return EXIT_FAILURE;
-        }
-
         sim_drones[i].pid = fork();
-
         if (sim_drones[i].pid < 0) {
             perror("MAIN_CONTROLLER: Error forking drone process");
-            log_error_to_report("Critical error forking a drone child process.");
-            // Cleanup
-            log_simulation_summary_to_report(0, 3);
-            close_report();
+            shared_mem->simulation_running = 0; // Stop simulation
             return EXIT_FAILURE;
         } else if (sim_drones[i].pid == 0) { // Child Process
-            // Child closes unused ends of its pipes
-            close(temp_pipes_to_child[i][1]);    // Does not write to "to_child"
-            close(temp_pipes_from_child[i][0]);  // Does not read from "from_child"
-            // Report file is managed by parent, child should not touch it after fork
-            // unless specifically designed to (not the case here).
-            if (report_file) { // Best practice: child closes inherited file descriptors it won't use
-                fclose(report_file);
-                report_file = NULL;
-            }
-            drone_child_process(sim_drones[i], temp_pipes_to_child[i][0], temp_pipes_from_child[i][1]);
-            exit(EXIT_SUCCESS); // Should be unreachable as drone_child_process calls exit
+            if (report_file) fclose(report_file);
+            drone_child_process(i, sim_drones[i]);
+            exit(EXIT_SUCCESS);
         } else { // Parent Process
-            // Parent closes unused ends of its pipes
-            close(temp_pipes_to_child[i][0]);    // Does not read from "to_child"
-            close(temp_pipes_from_child[i][1]);  // Does not write to "from_child"
-
-            sim_drones[i].pipe_to_child_write_fd = temp_pipes_to_child[i][1];
-            sim_drones[i].pipe_from_child_read_fd = temp_pipes_from_child[i][0];
+            shared_mem->drones[i].pid = sim_drones[i].pid; // Store PID in shared memory
             log_to_report("MAIN_CONTROLLER: Launched Drone ID %d (PID: %d).\n", sim_drones[i].id, sim_drones[i].pid);
         }
     }
 
     // --- Main Simulation Loop ---
     int active_drones_count = num_sim_drones;
-    int current_time_step = 1; // Start from time step 1 for movements
+    int current_time_step = 1;
     int simulation_terminated_by_collisions = 0;
-    int overall_simulation_status_code = 0; // 0=OK, 1=Collisions, 2=Threshold, 3=Error/Incomplete
+    int overall_simulation_status_code = 0;
 
-
-    while (active_drones_count > 0 && current_time_step < MAX_TIME_STEPS) {
+    while (active_drones_count > 0 && current_time_step < MAX_TIME_STEPS && !simulation_terminated_by_collisions) {
         log_time_step_header_to_report(current_time_step);
         printf("\n--- Time Step %d ---\n", current_time_step);
 
-        ParentToChildMessage proceed_msg = {MSG_TYPE_PROCEED};
-        ParentToChildMessage terminate_msg = {MSG_TYPE_TERMINATE}; // For early termination
-
-        // Check if simulation needs to terminate due to excessive collisions
-        if (simulation_terminated_by_collisions) {
-            log_to_report("MAIN_CONTROLLER: Terminating remaining active drones due to collision threshold.\n");
-            printf("MAIN_CONTROLLER: Terminating remaining active drones due to collision threshold.\n");
-            for (int i = 0; i < num_sim_drones; ++i) {
-                if (sim_drones[i].active) {
-                    if (sim_drones[i].pipe_to_child_write_fd != -1) { // Check if pipe is open
-                         if (write(sim_drones[i].pipe_to_child_write_fd, &terminate_msg, sizeof(ParentToChildMessage)) == -1) {
-                            //perror("MAIN_CONTROLLER: Error sending TERMINATE message");
-                            // Log this minor error if needed, but proceed with cleanup
-                         }
-                    }
-                    cleanup_pipes(i);
-                    sim_drones[i].active = 0;
-                }
-            }
-            active_drones_count = 0; // All drones are now considered inactive
-            overall_simulation_status_code = 2; // Failed due to threshold
-            continue; // Skip to end of while loop
-        }
-
         // 1. Signal Phase: Tell active drones to proceed
         for (int i = 0; i < num_sim_drones; ++i) {
-            if (sim_drones[i].active) {
-                if (write(sim_drones[i].pipe_to_child_write_fd, &proceed_msg, sizeof(ParentToChildMessage)) == -1) {
-                    perror("MAIN_CONTROLLER: Error writing PROCEED to child");
-                    log_error_to_report("Error sending PROCEED command to drone. Marking inactive.");
-                    cleanup_pipes(i);
-                    sim_drones[i].active = 0;
-                    active_drones_count--;
-                    overall_simulation_status_code = 3; // Mark as incomplete/error
-                }
+            if (shared_mem->drones[i].active) {
+                sem_post(sim_drones[i].sem_child_can_act);
             }
         }
 
-        // 2. Update Phase: Collect updates from active drones
-        log_to_report("Drone states after this step's movements:\n");
-        // printf("Drone states after this step's movements:\n");
+        // 2. Wait and Update Phase: Wait for updates from all active drones
+        int drones_finished_this_step = 0;
+        for (int i = 0; i < num_sim_drones; ++i) {
+            if (shared_mem->drones[i].active) {
+                sem_wait(sim_drones[i].sem_parent_can_read); // Wait for drone to complete its step
+                // Update is already in shared memory, now just log and process it
+                if (shared_mem->drones[i].finished) {
+                    shared_mem->drones[i].active = 0;
+                    drones_finished_this_step++;
+                    log_drone_finish_to_report(&shared_mem->drones[i]);
+                } else {
+                    log_drone_update_to_report(&shared_mem->drones[i], sim_drones[i].instructions[shared_mem->drones[i].instruction_executed_index]);
+                }
+                // Store position history
+                drone_positions_history[current_time_step][i][0] = shared_mem->drones[i].x;
+                drone_positions_history[current_time_step][i][1] = shared_mem->drones[i].y;
+                drone_positions_history[current_time_step][i][2] = shared_mem->drones[i].z;
+            }
+        }
+        active_drones_count -= drones_finished_this_step;
+
         display_drone_grid(current_time_step);
         display_drone_summary_list(current_time_step);
-        printf("\n"); 
-        for (int i = 0; i < num_sim_drones; ++i) {
-            if (sim_drones[i].active) {
-                DroneUpdate received_update;
-                ssize_t bytes_read = read(sim_drones[i].pipe_from_child_read_fd, &received_update, sizeof(DroneUpdate));
-
-                if (bytes_read > 0) {
-                    sim_drones[i].x = received_update.new_x;
-                    sim_drones[i].y = received_update.new_y;
-                    sim_drones[i].z = received_update.new_z;
-                    sim_drones[i].current_instruction_index_tracker++;
-
-                    // Store position history
-                    if (current_time_step < MAX_TIME_STEPS && i < MAX_DRONES) {
-                         drone_positions_history[current_time_step][i][0] = sim_drones[i].x;
-                         drone_positions_history[current_time_step][i][1] = sim_drones[i].y;
-                         drone_positions_history[current_time_step][i][2] = sim_drones[i].z;
-                    }
-
-
-                    if (received_update.finished) {
-                        sim_drones[i].active = 0;
-                        active_drones_count--;
-                        log_drone_finish_to_report(&sim_drones[i]);
-                        // printf("  Drone ID %d: (%d, %d, %d) - FINISHED\n", sim_drones[i].id, sim_drones[i].x, sim_drones[i].y, sim_drones[i].z);
-                        cleanup_pipes(i);
-                    } else {
-                        log_drone_update_to_report(&sim_drones[i], &received_update, sim_drones[i].instructions[received_update.instruction_executed_index]);
-                        // printf("  Drone ID %d: (%d, %d, %d) - Active (Executed instr %d: %s)\n",
-                        //        sim_drones[i].id, sim_drones[i].x, sim_drones[i].y, sim_drones[i].z,
-                        //        received_update.instruction_executed_index,
-                        //        command_to_string(sim_drones[i].instructions[received_update.instruction_executed_index]));
-                    }
-                } else { // Error reading or pipe closed prematurely
-                    fprintf(stderr, "MAIN_CONTROLLER: Error or premature pipe close from Drone ID %d.\n", sim_drones[i].id);
-                    log_error_to_report("Error reading update from drone or pipe closed prematurely. Marking inactive.");
-                    cleanup_pipes(i);
-                    sim_drones[i].active = 0;
-                    active_drones_count--;
-                    overall_simulation_status_code = 3;
-                }
-            }
-        }
+        printf("\n");
 
         // 3. Collision Detection Phase
         log_to_report("Collision checks for this step:\n");
         printf("Collision checks for this step:\n");
         int collisions_this_step_count = 0;
-        if (!simulation_terminated_by_collisions) { // Only check if not already terminating
-            for (int i = 0; i < num_sim_drones; ++i) {
-                // Check drone 'i' if it was active before this step's update OR just finished in this step
-                if (!sim_drones[i].active && sim_drones[i].current_instruction_index_tracker <= current_time_step) continue;
+        for (int i = 0; i < num_sim_drones; ++i) {
+            // Only check drones that are still in the air or just finished
+            if (shared_mem->drones[i].finished && shared_mem->drones[i].instruction_executed_index < current_time_step -1) continue;
+            for (int j = i + 1; j < num_sim_drones; ++j) {
+                if (shared_mem->drones[j].finished && shared_mem->drones[j].instruction_executed_index < current_time_step -1) continue;
 
-                for (int j = i + 1; j < num_sim_drones; ++j) {
-                    if (!sim_drones[j].active && sim_drones[j].current_instruction_index_tracker <= current_time_step) continue;
+                if (shared_mem->drones[i].x == shared_mem->drones[j].x &&
+                    shared_mem->drones[i].y == shared_mem->drones[j].y &&
+                    shared_mem->drones[i].z == shared_mem->drones[j].z) {
+                    
+                    log_collision_to_report(shared_mem->drones[i].id, shared_mem->drones[j].id, shared_mem->drones[i].x, shared_mem->drones[i].y, shared_mem->drones[i].z, current_time_step);
+                    printf("  COLLISION! Drone ID %d and Drone ID %d at (%d, %d, %d)\n", shared_mem->drones[i].id, shared_mem->drones[j].id, shared_mem->drones[i].x, shared_mem->drones[i].y, shared_mem->drones[i].z);
+                    
+                    collisions_this_step_count++;
+                    shared_mem->total_collisions_count++;
+                    total_collisions_count = shared_mem->total_collisions_count; // sync local copy
+                    if (overall_simulation_status_code == 0) overall_simulation_status_code = 1;
 
-                    if (sim_drones[i].x == sim_drones[j].x &&
-                        sim_drones[i].y == sim_drones[j].y &&
-                        sim_drones[i].z == sim_drones[j].z)
-                    {
-                        // A collision occurred if both drones are at the same spot AND
-                        // at least one of them was active enough to have potentially moved there this step,
-                        // or finished there this step. The current_instruction_index_tracker check helps.
-                        // If a drone is !active but its tracker is >= current_time_step, it means it just finished.
-                        int drone_i_participated = sim_drones[i].active || (sim_drones[i].current_instruction_index_tracker >= current_time_step);
-                        int drone_j_participated = sim_drones[j].active || (sim_drones[j].current_instruction_index_tracker >= current_time_step);
-
-                        if (drone_i_participated && drone_j_participated) {
-                            log_collision_to_report(sim_drones[i].id, sim_drones[j].id, sim_drones[i].x, sim_drones[i].y, sim_drones[i].z, current_time_step);
-                            printf("  COLLISION! Drone ID %d and Drone ID %d at (%d, %d, %d)\n",
-                                   sim_drones[i].id, sim_drones[j].id, sim_drones[i].x, sim_drones[i].y, sim_drones[i].z);
-
-                            collisions_this_step_count++;
-                            total_collisions_count++;
-                            if (overall_simulation_status_code == 0) overall_simulation_status_code = 1; // Mark as completed with collisions
-
-                            // Send SIGUSR1 to involved drones
-                            if (sim_drones[i].pid > 0) kill(sim_drones[i].pid, SIGUSR1); else log_to_report("Note: Drone %d PID invalid for SIGUSR1.\n", sim_drones[i].id);
-                            if (sim_drones[j].pid > 0) kill(sim_drones[j].pid, SIGUSR1); else log_to_report("Note: Drone %d PID invalid for SIGUSR1.\n", sim_drones[j].id);
-
-                            // Optional: Deactivate drones on collision
-                            // sim_drones[i].active = 0; active_drones_count--; cleanup_pipes(i);
-                            // sim_drones[j].active = 0; active_drones_count--; cleanup_pipes(j);
-                        }
-                    }
+                    kill(shared_mem->drones[i].pid, SIGUSR1);
+                    kill(shared_mem->drones[j].pid, SIGUSR1);
                 }
             }
         }
-        if (collisions_this_step_count == 0 && !simulation_terminated_by_collisions) {
+        if (collisions_this_step_count == 0) {
             log_to_report("  No collisions detected this step.\n");
             printf("  No collisions detected this step.\n");
         }
-        log_to_report("---------------------------------\n");
         printf("---------------------------------\n");
 
-
-        // Check collision threshold
-        if (total_collisions_count >= COLLISION_THRESHOLD && !simulation_terminated_by_collisions) {
-            log_to_report("\nCRITICAL: Collision threshold (%d) reached/exceeded (%d collisions). Initiating termination.\n",
-                          COLLISION_THRESHOLD, total_collisions_count);
-            printf("\nCRITICAL: Collision threshold (%d) reached/exceeded (%d collisions). Initiating termination.\n",
-                   COLLISION_THRESHOLD, total_collisions_count);
-            simulation_terminated_by_collisions = 1; // Will trigger termination at start of next loop
+        if (shared_mem->total_collisions_count >= COLLISION_THRESHOLD) {
+            printf("\nCRITICAL: Collision threshold (%d) reached. Terminating simulation.\n", COLLISION_THRESHOLD);
+            log_to_report("\nCRITICAL: Collision threshold reached. Terminating.\n");
+            simulation_terminated_by_collisions = 1;
             overall_simulation_status_code = 2;
         }
 
-        if (active_drones_count == 0 && !simulation_terminated_by_collisions && overall_simulation_status_code == 0) {
-            log_to_report("\nAll drones have successfully completed their flight plans without critical issues.\n");
-            printf("\nAll drones have successfully completed their flight plans without critical issues.\n");
-        }
         current_time_step++;
-    } // End of main simulation loop
-
-    // --- Finalize Simulation ---
-    if (current_time_step >= MAX_TIME_STEPS && active_drones_count > 0){
-        log_error_to_report("Simulation stopped: Maximum time steps reached.");
-        printf("MAIN_CONTROLLER: Simulation stopped: Maximum time steps reached.\n");
-        if (overall_simulation_status_code < 2) overall_simulation_status_code = 3; // Incomplete
-         // Terminate any remaining active children
-        for (int i = 0; i < num_sim_drones; ++i) {
-            if (sim_drones[i].active) {
-                ParentToChildMessage terminate_msg = {MSG_TYPE_TERMINATE};
-                if (sim_drones[i].pipe_to_child_write_fd != -1) {
-                    write(sim_drones[i].pipe_to_child_write_fd, &terminate_msg, sizeof(ParentToChildMessage));
-                }
-                cleanup_pipes(i);
-            }
-        }
     }
 
+    // --- Finalize Simulation ---
+    shared_mem->simulation_running = 0; // Signal all children to stop
+    for (int i = 0; i < num_sim_drones; ++i) {
+        if(shared_mem->drones[i].active) {
+            shared_mem->drones[i].terminate_flag = 1;
+            sem_post(sim_drones[i].sem_child_can_act); // Unblock any waiting child
+        }
+    }
 
     log_simulation_summary_to_report(current_time_step, overall_simulation_status_code);
     close_report();
 
-    printf("\nMAIN_CONTROLLER: Simulation ended. Waiting for child drone processes to terminate...\n");
+    printf("\nMAIN_CONTROLLER: Simulation ended. Waiting for child processes...\n");
     for (int i = 0; i < num_sim_drones; ++i) {
-        if (sim_drones[i].pid > 0) { // Check if child was actually forked
-            int status;
-            waitpid(sim_drones[i].pid, &status, 0); // Wait for child to exit
-            // printf("MAIN_CONTROLLER: Drone ID %d (PID %d) terminated with status %d.\n", sim_drones[i].id, sim_drones[i].pid, status);
-        }
+        if (sim_drones[i].pid > 0) waitpid(sim_drones[i].pid, NULL, 0);
     }
 
-    printf("MAIN_CONTROLLER: All child processes terminated. Exiting.\n");
-    return (overall_simulation_status_code > 1) ? EXIT_FAILURE : EXIT_SUCCESS; // Exit with error if simulation failed critically
+    printf("MAIN_CONTROLLER: All child processes terminated.\n");
+    return (overall_simulation_status_code > 1) ? EXIT_FAILURE : EXIT_SUCCESS;
 }

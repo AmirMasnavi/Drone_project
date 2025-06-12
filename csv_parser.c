@@ -52,11 +52,12 @@ int load_drones_from_csv(const char* filename, Drone drones_arr[], int* drone_co
 
     while (fgets(line, sizeof(line), file) && *drone_count_ptr < MAX_DRONES) {
         Drone* d = &drones_arr[*drone_count_ptr];
+        // Initialize fields that are part of the Drone config struct.
+        // Other fields like PIDs and Semaphores will be set in main_controller.
         d->current_instruction_index_tracker = 0;
         d->num_instructions = 0;
-        d->active = 1;
-        d->pipe_to_child_write_fd = -1;  // Initialize pipe FDs
-        d->pipe_from_child_read_fd = -1;
+        // NOTE: The 'active' and pipe-related fields have been removed from the Drone struct.
+        // The parser no longer needs to initialize them.
 
         char* token;
 
@@ -64,17 +65,16 @@ int load_drones_from_csv(const char* filename, Drone drones_arr[], int* drone_co
         token = strtok(line, ",");
         if (token) d->id = atoi(token); else { fclose(file); return 0; }
 
-        // Start X
+        // Start X, Y, Z coordinates are now 'initial' positions.
+        // The live coordinates are stored in the shared memory.
         token = strtok(NULL, ",");
-        if (token) d->x = atoi(token); else { fclose(file); return 0; }
+        if (token) d->initial_x = atoi(token); else { fclose(file); return 0; }
 
-        // Start Y
         token = strtok(NULL, ",");
-        if (token) d->y = atoi(token); else { fclose(file); return 0; }
+        if (token) d->initial_y = atoi(token); else { fclose(file); return 0; }
 
-        // Start Z
         token = strtok(NULL, ",");
-        if (token) d->z = atoi(token); else { fclose(file); return 0; }
+        if (token) d->initial_z = atoi(token); else { fclose(file); return 0; }
 
         // Instructions (semicolon-separated)
         token = strtok(NULL, "\n"); // Read the rest of the line for instructions
@@ -103,7 +103,6 @@ int load_drones_from_csv(const char* filename, Drone drones_arr[], int* drone_co
     fclose(file);
     if (*drone_count_ptr == 0) {
         fprintf(stderr, "CSV_PARSER: No drones loaded from CSV.\n");
-        // return 0; // Decide if this is an error or valid (empty simulation)
     }
     return 1;
 }
