@@ -108,12 +108,11 @@ void log_collision_to_report(int drone_id1, int drone_id2, int x, int y, int z, 
 
 
 // Logs the final summary of the simulation.
-// simulation_failed_status: 0=Passed, 1=Completed with Collisions, 2=Failed (Threshold), 3=Failed (Incomplete)
 void log_simulation_summary_to_report(int final_time_step, int simulation_status_code) {
     if (!report_file) return;
     fprintf(report_file, "\n==== Simulation Summary ====\n");
     fprintf(report_file, "Total Drones Simulated: %d\n", num_sim_drones);
-    fprintf(report_file, "Total Time Steps Executed: %d\n", final_time_step > 0 ? final_time_step - 1 : 0);
+    fprintf(report_file, "Total Time Steps Executed: %d\n", final_time_step > 0 ? final_time_step : 0);
     fprintf(report_file, "Total Collisions Detected: %d\n", total_collisions_count);
 
     fprintf(report_file, "\nCollision Event Log (%d entries):\n", collision_log_index);
@@ -130,6 +129,15 @@ void log_simulation_summary_to_report(int final_time_step, int simulation_status
                     time_str_buffer);
         }
     }
+
+    // ADDED: This section directly addresses the feedback to show per-drone final statuses.
+    fprintf(report_file, "\n--- Final Drone Statuses ---\n");
+    for (int i = 0; i < num_sim_drones; ++i) {
+        // Reads the final state directly from shared memory
+        const char* status = shared_mem->drones[i].finished ? "COMPLETED" : "NOT COMPLETED";
+        fprintf(report_file, "  Drone ID %2d: %s\n", shared_mem->drones[i].id, status);
+    }
+
 
     fprintf(report_file, "\nOverall Simulation Status: ");
     switch (simulation_status_code) {

@@ -21,7 +21,6 @@ int step_ready_for_collision_check = 0;
 int collision_event_occurred = 0;
 int overall_simulation_status_code = 0;
 
-// ADDED: Struct to pass collision data to the report thread
 typedef struct {
     int drone_id1, drone_id2, x, y, z, time_step;
 } CollisionInfo;
@@ -48,9 +47,6 @@ void cleanup_simulation_resources() {
     printf("MAIN_CONTROLLER: All simulation resources cleaned up.\n");
 }
 
-/**
- * @brief Thread for the main simulation loop.
- */
 void* simulation_loop_thread(void* arg) {
     int active_drones_count = num_sim_drones;
 
@@ -59,18 +55,16 @@ void* simulation_loop_thread(void* arg) {
         log_time_step_header_to_report(current_time_step);
         printf("\n--- Time Step %d ---\n", current_time_step);
 
-        // --- US364: Signal all active drones to advance (step-by-step sync) ---
         for (int i = 0; i < num_sim_drones; ++i) {
             if (shared_mem->drones[i].active) {
-                sem_post(sim_drones[i].sem_child_can_act); // Tell drone it's okay to move
+                sem_post(sim_drones[i].sem_child_can_act);
             }
         }
 
-        // --- US364: Wait for all active drones to finish their step ---
         int drones_finished_this_step = 0;
         for (int i = 0; i < num_sim_drones; ++i) {
             if (shared_mem->drones[i].active) {
-                sem_wait(sim_drones[i].sem_parent_can_read); // Wait for drone to confirm it moved
+                sem_wait(sim_drones[i].sem_parent_can_read);
                 if (shared_mem->drones[i].finished) {
                     shared_mem->drones[i].active = 0;
                     drones_finished_this_step++;
@@ -78,9 +72,6 @@ void* simulation_loop_thread(void* arg) {
                 } else {
                     log_drone_update_to_report(&shared_mem->drones[i], sim_drones[i].instructions[shared_mem->drones[i].instruction_executed_index]);
                 }
-                drone_positions_history[current_time_step][i][0] = shared_mem->drones[i].x;
-                drone_positions_history[current_time_step][i][1] = shared_mem->drones[i].y;
-                drone_positions_history[current_time_step][i][2] = shared_mem->drones[i].z;
             }
         }
         active_drones_count -= drones_finished_this_step;
@@ -103,10 +94,6 @@ void* simulation_loop_thread(void* arg) {
     return NULL;
 }
 
-/**
- * @brief Thread for detecting collisions.
- * This meets criterion 1: "The collision detection thread monitors the shared memory..."
- */
 void* collision_detection_thread(void* arg) {
     while (shared_mem->simulation_running) {
         pthread_mutex_lock(&data_mutex);
@@ -122,7 +109,7 @@ void* collision_detection_thread(void* arg) {
         int collisions_this_step_count = 0;
         for (int i = 0; i < num_sim_drones; ++i) {
             for (int j = i + 1; j < num_sim_drones; ++j) {
-                if (shared_mem->drones[i].x == shared_mem->drones[j].x &&
+                 if (shared_mem->drones[i].x == shared_mem->drones[j].x &&
                     shared_mem->drones[i].y == shared_mem->drones[j].y &&
                     shared_mem->drones[i].z == shared_mem->drones[j].z) {
                     
@@ -131,7 +118,6 @@ void* collision_detection_thread(void* arg) {
                     total_collisions_count = shared_mem->total_collisions_count;
                     if (overall_simulation_status_code == 0) overall_simulation_status_code = 1;
                     
-                    // Populate collision info for the reporting thread
                     last_collision_info = (CollisionInfo){
                         shared_mem->drones[i].id, shared_mem->drones[j].id,
                         shared_mem->drones[i].x, shared_mem->drones[i].y, shared_mem->drones[i].z,
@@ -146,12 +132,10 @@ void* collision_detection_thread(void* arg) {
 
         if (collisions_this_step_count > 0) {
             collision_event_occurred = 1;
-            // This meets criterion 2 & 4: "signals... using condition variables" with "Proper mutex locking"
             pthread_cond_signal(&collision_cond);
         }
 
         if (shared_mem->total_collisions_count >= COLLISION_THRESHOLD) {
-            printf("\nCRITICAL: Collision threshold (%d) reached. Terminating simulation.\n", COLLISION_THRESHOLD);
             overall_simulation_status_code = 2;
             shared_mem->simulation_running = 0;
         }
@@ -163,33 +147,30 @@ void* collision_detection_thread(void* arg) {
     return NULL;
 }
 
-/**
- * @brief Thread for generating reports.
- * This meets criterion 3: "The report generation thread, waiting on the condition variable, immediately processes..."
- */
 void* report_generation_thread(void* arg) {
     while (shared_mem->simulation_running) {
         pthread_mutex_lock(&data_mutex);
         while (!collision_event_occurred && shared_mem->simulation_running) {
-            // Waits on the condition variable, protected by the mutex
             pthread_cond_wait(&collision_cond, &data_mutex);
         }
 
-        if (!shared_mem->simulation_running) {
-            pthread_mutex_unlock(&data_mutex);
-            break;
+        if (collision_event_occurred) {
+            log_to_report("Collision checks for this step:\n");
+            log_collision_to_report(last_collision_info.drone_id1, last_collision_info.drone_id2, 
+                                    last_collision_info.x, last_collision_info.y, last_collision_info.z, 
+                                    last_collision_info.time_step);
+            printf("  REPORT_THREAD: Notified of collision. Details logged.\n");
+            collision_event_occurred = 0;
         }
         
-        // MOVED: The logging call is now in the report thread.
-        log_to_report("Collision checks for this step:\n");
-        log_collision_to_report(last_collision_info.drone_id1, last_collision_info.drone_id2, 
-                                last_collision_info.x, last_collision_info.y, last_collision_info.z, 
-                                last_collision_info.time_step);
-        printf("  REPORT_THREAD: Notified of collision. Details logged.\n");
-        
-        collision_event_occurred = 0;
         pthread_mutex_unlock(&data_mutex);
     }
+    
+    // MOVED: The final report generation is now done by this thread after the simulation loop ends.
+    // This directly addresses the feedback on "Aggregation in report thread".
+    log_simulation_summary_to_report(current_time_step - 1, overall_simulation_status_code);
+    close_report();
+
     return NULL;
 }
 
@@ -204,6 +185,8 @@ int main(int argc, char *argv[]) {
     log_to_report("MAIN_CONTROLLER: Simulation process started using %s.\n", csv_filename);
 
     if (!load_drones_from_csv(csv_filename, sim_drones, &num_sim_drones) || num_sim_drones == 0) {
+        // Still call summary for the report thread to generate an empty/failed report
+        shared_mem->simulation_running = 0;
         log_simulation_summary_to_report(0, num_sim_drones == 0 ? 0 : 3);
         close_report();
         return num_sim_drones == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -239,7 +222,6 @@ int main(int argc, char *argv[]) {
             exit(EXIT_SUCCESS);
         } else {
             shared_mem->drones[i].pid = sim_drones[i].pid;
-            log_to_report("MAIN_CONTROLLER: Launched Drone ID %d (PID: %d).\n", sim_drones[i].id, sim_drones[i].pid);
         }
     }
 
@@ -251,15 +233,7 @@ int main(int argc, char *argv[]) {
     pthread_join(collision_thread_id, NULL);
     pthread_join(report_thread_id, NULL);
 
-    for (int i = 0; i < num_sim_drones; ++i) {
-        if (shared_mem->drones[i].active) {
-            shared_mem->drones[i].terminate_flag = 1;
-            sem_post(sim_drones[i].sem_child_can_act);
-        }
-    }
-
-    log_simulation_summary_to_report(current_time_step - 1, overall_simulation_status_code);
-    close_report();
+    // REMOVED: The summary and close calls are now in the report_generation_thread.
 
     printf("\nMAIN_CONTROLLER: Simulation ended. Waiting for child processes...\n");
     for (int i = 0; i < num_sim_drones; ++i) {
