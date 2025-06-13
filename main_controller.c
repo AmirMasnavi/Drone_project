@@ -233,7 +233,11 @@ int main(int argc, char *argv[]) {
     pthread_join(collision_thread_id, NULL);
     pthread_join(report_thread_id, NULL);
 
-    // REMOVED: The summary and close calls are now in the report_generation_thread.
+
+    for (int i = 0; i < num_sim_drones; ++i) {
+        shared_mem->drones[i].terminate_flag = 1;
+        sem_post(sim_drones[i].sem_child_can_act); // Unblock any waiting child
+    }
 
     printf("\nMAIN_CONTROLLER: Simulation ended. Waiting for child processes...\n");
     for (int i = 0; i < num_sim_drones; ++i) {

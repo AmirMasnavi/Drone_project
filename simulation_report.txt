@@ -1,143 +1,41 @@
 ==== Simulation Report ====
-Report generated on: Thu Jun 12 11:57:06 2025
+Report generated on: Fri Jun 13 12:44:13 2025
 ===========================
 
-MAIN_CONTROLLER: Simulation process started using drones_flight_plan.csv.
-Initial Drone States (Loaded 7 drones):
-  Drone ID 1: Start Pos (9, 0, 0), Instructions: 12
-  Drone ID 2: Start Pos (7, 0, 1), Instructions: 12
-  Drone ID 3: Start Pos (11, 0, 1), Instructions: 12
-  Drone ID 4: Start Pos (5, 0, 2), Instructions: 14
-  Drone ID 5: Start Pos (13, 0, 2), Instructions: 14
-  Drone ID 6: Start Pos (0, 4, 0), Instructions: 14
-  Drone ID 7: Start Pos (19, 4, 0), Instructions: 14
+MAIN_CONTROLLER: Simulation process started using drones_flight_plan_direct_collision.csv.
+Initial Drone States (Loaded 2 drones):
+  Drone ID 1: Start Pos (0, 0, 0), Instructions: 3
+  Drone ID 2: Start Pos (4, 0, 0), Instructions: 3
 ---------------------------------------
 
 --- Time Step 1 ---
-  Drone ID 1: Pos (9, 0, 1), Executed Instr 0 (UP)
-  Drone ID 2: Pos (7, 0, 2), Executed Instr 0 (UP)
-  Drone ID 3: Pos (11, 0, 2), Executed Instr 0 (UP)
-  Drone ID 4: Pos (5, 0, 3), Executed Instr 0 (UP)
-  Drone ID 5: Pos (13, 0, 3), Executed Instr 0 (UP)
-  Drone ID 6: Pos (1, 4, 0), Executed Instr 0 (RIGHT)
-  Drone ID 7: Pos (18, 4, 0), Executed Instr 0 (LEFT)
+  Drone ID 1: Pos (1, 0, 0), Executed Instr 0 (RIGHT)
+  Drone ID 2: Pos (3, 0, 0), Executed Instr 0 (LEFT)
 --- Time Step 2 ---
-  Drone ID 1: Pos (9, 0, 2), Executed Instr 1 (UP)
-  Drone ID 2: Pos (7, 0, 3), Executed Instr 1 (UP)
-  Drone ID 3: Pos (11, 0, 3), Executed Instr 1 (UP)
-  Drone ID 4: Pos (5, 0, 4), Executed Instr 1 (UP)
-  Drone ID 5: Pos (13, 0, 4), Executed Instr 1 (UP)
-  Drone ID 6: Pos (2, 4, 0), Executed Instr 1 (RIGHT)
-  Drone ID 7: Pos (17, 4, 0), Executed Instr 1 (LEFT)
+  Drone ID 1: Pos (2, 0, 0), Executed Instr 1 (RIGHT)
+  Drone ID 2: Pos (2, 0, 0), Executed Instr 1 (LEFT)
+Collision checks for this step:
+  COLLISION! Drones 1 and 2 at (2, 0, 0). Timestamp: 2025-06-13 12:44:13
 --- Time Step 3 ---
-  Drone ID 1: Pos (9, 0, 2), Executed Instr 2 (SHAKE)
-  Drone ID 2: Pos (7, 0, 4), Executed Instr 2 (UP)
-  Drone ID 3: Pos (11, 0, 4), Executed Instr 2 (UP)
-  Drone ID 4: Pos (5, 0, 5), Executed Instr 2 (UP)
-  Drone ID 5: Pos (13, 0, 5), Executed Instr 2 (UP)
-  Drone ID 6: Pos (3, 4, 0), Executed Instr 2 (RIGHT)
-  Drone ID 7: Pos (16, 4, 0), Executed Instr 2 (LEFT)
---- Time Step 4 ---
-  Drone ID 1: Pos (9, 0, 2), Executed Instr 3 (SHAKE)
-  Drone ID 2: Pos (7, 0, 5), Executed Instr 3 (UP)
-  Drone ID 3: Pos (11, 0, 5), Executed Instr 3 (UP)
-  Drone ID 4: Pos (5, 0, 6), Executed Instr 3 (UP)
-  Drone ID 5: Pos (13, 0, 6), Executed Instr 3 (UP)
-  Drone ID 6: Pos (4, 4, 0), Executed Instr 3 (RIGHT)
-  Drone ID 7: Pos (15, 4, 0), Executed Instr 3 (LEFT)
---- Time Step 5 ---
-  Drone ID 1: Pos (9, 0, 3), Executed Instr 4 (UP)
-  Drone ID 2: Pos (7, 0, 5), Executed Instr 4 (SHAKE)
-  Drone ID 3: Pos (11, 0, 5), Executed Instr 4 (SHAKE)
-  Drone ID 4: Pos (5, 0, 7), Executed Instr 4 (UP)
-  Drone ID 5: Pos (13, 0, 7), Executed Instr 4 (UP)
-  Drone ID 6: Pos (5, 4, 0), Executed Instr 4 (RIGHT)
-  Drone ID 7: Pos (14, 4, 0), Executed Instr 4 (LEFT)
---- Time Step 6 ---
-  Drone ID 1: Pos (9, 0, 4), Executed Instr 5 (UP)
-  Drone ID 2: Pos (7, 0, 5), Executed Instr 5 (SHAKE)
-  Drone ID 3: Pos (11, 0, 5), Executed Instr 5 (SHAKE)
-  Drone ID 4: Pos (5, 0, 8), Executed Instr 5 (UP)
-  Drone ID 5: Pos (13, 0, 8), Executed Instr 5 (UP)
-  Drone ID 6: Pos (5, 4, 0), Executed Instr 5 (SHAKE)
-  Drone ID 7: Pos (14, 4, 0), Executed Instr 5 (SHAKE)
---- Time Step 7 ---
-  Drone ID 1: Pos (9, 0, 5), Executed Instr 6 (UP)
-  Drone ID 2: Pos (6, 0, 5), Executed Instr 6 (LEFT)
-  Drone ID 3: Pos (12, 0, 5), Executed Instr 6 (RIGHT)
-  Drone ID 4: Pos (5, 0, 8), Executed Instr 6 (SHAKE)
-  Drone ID 5: Pos (13, 0, 8), Executed Instr 6 (SHAKE)
-  Drone ID 6: Pos (5, 4, 1), Executed Instr 6 (UP)
-  Drone ID 7: Pos (14, 4, 1), Executed Instr 6 (UP)
---- Time Step 8 ---
-  Drone ID 1: Pos (9, 0, 6), Executed Instr 7 (UP)
-  Drone ID 2: Pos (5, 0, 5), Executed Instr 7 (LEFT)
-  Drone ID 3: Pos (13, 0, 5), Executed Instr 7 (RIGHT)
-  Drone ID 4: Pos (5, 0, 8), Executed Instr 7 (SHAKE)
-  Drone ID 5: Pos (13, 0, 8), Executed Instr 7 (SHAKE)
-  Drone ID 6: Pos (5, 4, 2), Executed Instr 7 (UP)
-  Drone ID 7: Pos (14, 4, 2), Executed Instr 7 (UP)
---- Time Step 9 ---
-  Drone ID 1: Pos (8, 0, 6), Executed Instr 8 (LEFT)
-  Drone ID 2: Pos (5, 0, 6), Executed Instr 8 (UP)
-  Drone ID 3: Pos (13, 0, 6), Executed Instr 8 (UP)
-  Drone ID 4: Pos (4, 0, 8), Executed Instr 8 (LEFT)
-  Drone ID 5: Pos (14, 0, 8), Executed Instr 8 (RIGHT)
-  Drone ID 6: Pos (6, 4, 2), Executed Instr 8 (RIGHT)
-  Drone ID 7: Pos (13, 4, 2), Executed Instr 8 (LEFT)
---- Time Step 10 ---
-  Drone ID 1: Pos (7, 0, 6), Executed Instr 9 (LEFT)
-  Drone ID 2: Pos (5, 0, 7), Executed Instr 9 (UP)
-  Drone ID 3: Pos (13, 0, 7), Executed Instr 9 (UP)
-  Drone ID 4: Pos (3, 0, 8), Executed Instr 9 (LEFT)
-  Drone ID 5: Pos (15, 0, 8), Executed Instr 9 (RIGHT)
-  Drone ID 6: Pos (7, 4, 2), Executed Instr 9 (RIGHT)
-  Drone ID 7: Pos (12, 4, 2), Executed Instr 9 (LEFT)
---- Time Step 11 ---
-  Drone ID 1: Pos (6, 0, 6), Executed Instr 10 (LEFT)
-  Drone ID 2: Pos (4, 0, 7), Executed Instr 10 (LEFT)
-  Drone ID 3: Pos (14, 0, 7), Executed Instr 10 (RIGHT)
-  Drone ID 4: Pos (3, 0, 7), Executed Instr 10 (DOWN)
-  Drone ID 5: Pos (15, 0, 7), Executed Instr 10 (DOWN)
-  Drone ID 6: Pos (8, 4, 2), Executed Instr 10 (RIGHT)
-  Drone ID 7: Pos (11, 4, 2), Executed Instr 10 (LEFT)
---- Time Step 12 ---
-  Drone ID 1: Pos (5, 0, 6) - FINISHED flight plan.
-  Drone ID 2: Pos (3, 0, 7) - FINISHED flight plan.
-  Drone ID 3: Pos (15, 0, 7) - FINISHED flight plan.
-  Drone ID 4: Pos (3, 0, 6), Executed Instr 11 (DOWN)
-  Drone ID 5: Pos (15, 0, 6), Executed Instr 11 (DOWN)
-  Drone ID 6: Pos (9, 4, 2), Executed Instr 11 (RIGHT)
-  Drone ID 7: Pos (10, 4, 2), Executed Instr 11 (LEFT)
---- Time Step 13 ---
-  Drone ID 4: Pos (2, 0, 6), Executed Instr 12 (LEFT)
-  Drone ID 5: Pos (16, 0, 6), Executed Instr 12 (RIGHT)
-  Drone ID 6: Pos (10, 4, 2), Executed Instr 12 (RIGHT)
-  Drone ID 7: Pos (9, 4, 2), Executed Instr 12 (LEFT)
---- Time Step 14 ---
-  Drone ID 4: Pos (1, 0, 6) - FINISHED flight plan.
-  Drone ID 5: Pos (17, 0, 6) - FINISHED flight plan.
-  Drone ID 6: Pos (11, 4, 2) - FINISHED flight plan.
-  Drone ID 7: Pos (8, 4, 2) - FINISHED flight plan.
+  Drone ID 1: Pos (2, 0, 1) - FINISHED flight plan.
+  Drone ID 2: Pos (2, 0, 1) - FINISHED flight plan.
+Collision checks for this step:
+  COLLISION! Drones 1 and 2 at (2, 0, 1). Timestamp: 2025-06-13 12:44:13
 
 ==== Simulation Summary ====
-Total Drones Simulated: 7
-Total Time Steps Executed: 14
-Total Collisions Detected: 0
+Total Drones Simulated: 2
+Total Time Steps Executed: 3
+Total Collisions Detected: 2
 
-Collision Event Log (0 entries):
-  No collisions occurred during the simulation.
+Collision Event Log (2 entries):
+  Event 1: Time Step 2, Drones 1 & 2 at (2, 0, 0), Logged at: 2025-06-13 12:44:13
+  Event 2: Time Step 3, Drones 1 & 2 at (2, 0, 1), Logged at: 2025-06-13 12:44:13
 
 --- Final Drone Statuses ---
   Drone ID  1: COMPLETED
   Drone ID  2: COMPLETED
-  Drone ID  3: COMPLETED
-  Drone ID  4: COMPLETED
-  Drone ID  5: COMPLETED
-  Drone ID  6: COMPLETED
-  Drone ID  7: COMPLETED
 
-Overall Simulation Status: PASSED (All drones completed without critical issues)
+Overall Simulation Status: COMPLETED WITH COLLISIONS
 ==========================
 
 ==== End of Report ====
