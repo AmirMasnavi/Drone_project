@@ -1,4 +1,4 @@
-# Sprint 3 - Drone Simulation Project
+# Drone Simulation Project
 
 **Group Members:**
 
@@ -108,14 +108,3 @@ The movement scripts for drones are defined in the input CSV file (e.g., `drones
 * **Final Summary:** After threads join, `log_simulation_summary_to_report()` writes total drones, time steps, collision log, final statuses (read from shared memory), and overall status. The report is flushed and closed.
 
 ---
-
-## 4. Self-Assessment of Commitment (0 – 100 %)
-
-All group members contributed equally to Sprint 2 solution: implementation, testing, design, and documentation.
-
-| Group Member   | Student Number | Contribution (%) |
-| -------------- | -------------- | ---------------- |
-| Amir Masnavi   | 1221579        | 25 %             |
-| Leonor Marinho | 1230977        | 25 %             |
-| Inês Oliveira  | 1231205        | 25 %             |
-| Rui Moreira    | 1221696        | 25 %             |
